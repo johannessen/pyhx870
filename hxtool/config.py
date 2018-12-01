@@ -36,6 +36,9 @@ class GenericHXConfig(object):
         config_data = b''
         bytes_to_go = self.CONFIG_SIZE
         for offset in range(0x0000, self.CONFIG_SIZE, self.CHUNK_SIZE):
+            if callable(progress):
+                if offset & ((self.PROGRESS_LOG_AT >> 2) - 1) == 0:
+                    progress(offset / bytes_to_go)
             if progress:
                 percent_done = int(100.0 * offset / bytes_to_go)
                 if offset % self.PROGRESS_LOG_AT == 0:
@@ -70,6 +73,9 @@ class GenericHXConfig(object):
         self.p.write_config_memory(0x0010, data[0x0010:self.CHUNK_SIZE])
         last_chunk = self.CONFIG_SIZE - self.CHUNK_SIZE
         for offset in range(self.CHUNK_SIZE, last_chunk, self.CHUNK_SIZE):
+            if callable(progress):
+                if offset & ((self.PROGRESS_LOG_AT >> 2) - 1) == 0:
+                    progress(offset / bytes_to_go)
             if progress:
                 percent_done = int(100.0 * offset / bytes_to_go)
                 if offset % self.PROGRESS_LOG_AT == 0:
@@ -227,6 +233,9 @@ class GX1400Config(GenericHXConfig):
         self.p.write_config_memory(0x00d0, data[0x00d0:0x00f0])
         self.p.write_config_memory(0x00f0, data[0x00f0:0x0110])
         for offset in range(0x0120, 0x1fa0, self.CHUNK_SIZE):
+            if callable(progress):
+                if offset & ((self.PROGRESS_LOG_AT >> 2) - 1) == 0:
+                    progress(offset / bytes_to_go)
             if progress:
                 percent_done = int(100.0 * offset / bytes_to_go)
                 if offset % self.PROGRESS_LOG_AT == 0:
