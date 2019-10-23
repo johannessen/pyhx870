@@ -18,17 +18,24 @@ class HxToolArgs(object):
         self.simulator = None
 
 def config_write(config):
+    h = hxtool.get(HxToolArgs())
     try:
-        h = hxtool.get(HxToolArgs())
+        if not h.comm.cp_mode:
+            raise Exception("not in CP mode (region mismatch?)")
         h.comm.sync()
+        fw = h.comm.get_firmware_version()
     except Exception as exc:
         print( "Could not open connection to HX870." )
         sys.exit(1)
-    print( "Firmware " + h.comm.get_firmware_version() + " installed on device" )
+    print( "Firmware " + fw + " installed on device" )
     sys.stdout.write( "Writing to HX870 memory " )
     sys.stdout.flush()
-    coloredlogs.set_level(logging.WARNING)
-    h.config.config_write(config, progress=progress_bar)
+    try:
+        coloredlogs.set_level(logging.WARNING)
+        config = h.config.config_write(config, progress=progress_bar)
+    except Exception as exc:
+        print( " Error!" )
+        raise exc
     print( " done" )
 
 

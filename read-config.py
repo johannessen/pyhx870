@@ -18,18 +18,24 @@ class HxToolArgs(object):
         self.simulator = None
 
 def config_read():
+    h = hxtool.get(HxToolArgs())
     try:
-        h = hxtool.get(HxToolArgs())
+        if not h.comm.cp_mode:
+            raise Exception("not in CP mode (region mismatch?)")
         h.comm.sync()
+        mmsi = h.config.read_mmsi()[0]
     except Exception as exc:
         print( "Could not open connection to HX870." )
         sys.exit(1)
-    mmsi = h.config.read_mmsi()[0]
     print( "Device MMSI " + (mmsi if mmsi != "ffffffffff" else "not set") )
     sys.stdout.write( "Reading HX870 memory " )
     sys.stdout.flush()
-    coloredlogs.set_level(logging.WARNING)
-    config = h.config.config_read(progress_bar)
+    try:
+        coloredlogs.set_level(logging.WARNING)
+        config = h.config.config_read(progress_bar)
+    except Exception as exc:
+        print( " Error!" )
+        raise exc
     print( " done" )
     return config
 
