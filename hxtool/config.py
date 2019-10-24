@@ -4,7 +4,7 @@ from binascii import hexlify, unhexlify
 from logging import getLogger
 from typing import Tuple
 
-from .memory import unpack_waypoint, region_code_map
+from .memory import region_code_map, unpack_route, unpack_waypoint
 from .protocol import GenericHXProtocol, ProtocolError
 
 logger = getLogger(__name__)
@@ -173,6 +173,37 @@ class HX870Config(GenericHXConfig):
     CONFIG_MAGIC = 871
     CONFIG_SIZE = 0x8000
     FLASH_ID = ["AM057N", "AM057N2"]
+
+    def read_nav_data(self, progress=False):
+        nav_data = b''
+        bytes_to_go = 0x5e80 - 0x4300
+        for offset in range(0x4300, 0x5e80, 0x40):
+            bytes_done = offset - 0x4300
+            nav_data += self.p.read_config_memory(offset, 0x40)
+            if bytes_done % 0xdc0 == 0:  # 50%
+                percent_done = int(100.0 * bytes_done / bytes_to_go)
+                logger.info(f"{bytes_done} / {bytes_to_go} bytes ({percent_done}%)")
+        waypoints = []
+        wp_index = {}
+        for offset in range(0, 200 * 0x20, 0x20):
+            wp = unpack_waypoint(nav_data[offset:offset+0x20])
+            if wp is not None:
+                wp_index[wp["id"]] = len(waypoints)
+                waypoints.append(wp)
+        routes = []
+        for offset in range(200 * 0x20, 220 * 0x20, 0x20):
+            rt = unpack_route(nav_data[offset:offset+0x20])
+            if rt is not None:
+                for i in range(0, len(rt["points"])):
+                    # unpack_route() just returns waypoint IDs; replace those with the actual waypoints
+                    rt["points"][i] = waypoints[wp_index[rt["points"][i]]]
+                routes.append(rt)
+        if progress:
+            logger.info(f"{bytes_to_go} / {bytes_to_go} bytes (100%)")
+        return {
+            "waypoints": waypoints,
+            "routes": routes,
+        }
 
 
 class HX890Config(GenericHXConfig):

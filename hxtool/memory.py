@@ -32,6 +32,9 @@ def unpack_waypoint(data):
     lon_min = int(lon_str[4:10]) / 10000.0
     lon_dir = chr(data[15])
 
+    wp_lat_decimal = {"S": -1.0, "N": 1.0}[lat_dir] * (lat_deg + lat_min / 60.0)
+    wp_lon_decimal = {"W": -1.0, "E": 1.0}[lon_dir] * (lon_deg + lon_min / 60.0)
+
     wp_latitude = "%d%s%07.4f" % (lat_deg, lat_dir, lat_min)
     wp_longitude = "%d%s%07.4f" % (lon_deg, lon_dir, lon_min)
 
@@ -39,6 +42,8 @@ def unpack_waypoint(data):
         "id": wp_id,
         "name": wp_name,
         "mmsi": wp_mmsi,
+        "latitude_decimal": wp_lat_decimal,
+        "longitude_decimal": wp_lon_decimal,
         "latitude": wp_latitude,
         "longitude": wp_longitude
     }
@@ -77,6 +82,20 @@ def pack_waypoint(wp):
         raise protocol.ProtocolError("Waypoint encoding error")
 
     return wp_data
+
+
+def unpack_route(data):
+    if data[0x10] == 255:
+        return None
+    name = data[0:0x10].rstrip(b'\xff').decode("ascii")
+    waypoint_ids = []
+    for i in range(0x10, 0x20):
+        if data[i] != 255:
+            waypoint_ids.append(data[i])
+    return {
+        "name": name,
+        "points": waypoint_ids,
+    }
 
 
 region_code_map = {
