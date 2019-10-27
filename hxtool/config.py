@@ -4,7 +4,7 @@ from binascii import hexlify, unhexlify
 from logging import getLogger
 from typing import Tuple
 
-from .memory import region_code_map, unpack_route, unpack_waypoint
+from .memory import pack_route, pack_waypoint, region_code_map, unpack_route, unpack_waypoint
 from .protocol import GenericHXProtocol, ProtocolError
 
 logger = getLogger(__name__)
@@ -174,6 +174,8 @@ class HX870Config(GenericHXConfig):
     CONFIG_SIZE = 0x8000
     FLASH_ID = ["AM057N", "AM057N2"]
 
+    ROUTE_COUNT = 20
+
     def read_nav_data(self, progress=False):
         nav_data = b''
         bytes_to_go = 0x5e80 - 0x4300
@@ -198,12 +200,47 @@ class HX870Config(GenericHXConfig):
                     # unpack_route() just returns waypoint IDs; replace those with the actual waypoints
                     rt["points"][i] = waypoints[wp_index[rt["points"][i]]]
                 routes.append(rt)
+        status = self.p.read_config_memory(0x0005, 1)
+        waypoint_history = self.p.read_config_memory(0x05e0, 6)
+        route_history = self.p.read_config_memory(0x05f0, 6)
         if progress:
             logger.info(f"{bytes_to_go} / {bytes_to_go} bytes (100%)")
         return {
             "waypoints": waypoints,
             "routes": routes,
+            "status": list(status)[0],
+            "waypoint_history": list(filter(lambda x: x != 0xff, waypoint_history)),
+            "route_history": list(filter(lambda x: x != 0xff, route_history)),
         }
+
+    def write_nav_data(self, nav_data, progress=False):
+        config = b''
+        if len(nav_data["waypoints"]) > 200:
+            raise ProtocolError("Too many waypoints")
+        for waypoint in nav_data["waypoints"]:
+            config += pack_waypoint(waypoint)
+        while len(config) < 200 * 0x20:
+            config += b'\xff'*0x20
+        for route in nav_data["routes"]:
+            config += pack_route(route)
+        while len(config) < 200 * 0x20 + 20 * 0x20:
+            config += b'\xff'*0x20
+
+        config_size = len(config)  # 0x5e80 - 0x4300
+        for offset in range(0, config_size, 0x40):
+            self.p.write_config_memory(0x4300 + offset, config[offset:offset+0x40])
+            if progress and offset % 0xdc0 == 0:  # 50%
+                percent_done = int(100.0 * offset / config_size)
+                logger.info(f"{offset} / {config_size} bytes ({percent_done}%)")
+
+        if "status" in nav_data or "waypoint_history" in nav_data or "route_history" in nav_data:
+            raise NotImplementedError
+        self.p.write_config_memory(0x0005, b'\x00')
+        self.p.write_config_memory(0x05e0, b'\xff'*6)
+        self.p.write_config_memory(0x05f0, b'\xff'*6)
+
+        if progress:
+            logger.info(f"{config_size} / {config_size} bytes (100%)")
 
 
 class HX890Config(GenericHXConfig):
