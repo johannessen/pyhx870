@@ -52,8 +52,8 @@ def pack_waypoint(wp):
     lat_dir = m[2]
     lat_min = float(m[3])
     lat_minstr = ("%.04f" % lat_min).replace(".", "").zfill(6)
-    lat_hex = "F%03d%s%s" % (lat_deg, lat_minstr, lat_dir)
-    if len(lat_hex) != 12:
+    lat_hex = "%02d%s%02x" % (lat_deg, lat_minstr, ord(lat_dir))
+    if len(lat_hex) != 10:
         raise protocol.ProtocolError("Invalid waypoint latitude format")
 
     m = match(r"""(\d+)([EW])(\d+\.\d+)""", wp["longitude"].upper())
@@ -63,12 +63,14 @@ def pack_waypoint(wp):
     lon_dir = m[2]
     lon_min = float(m[3])
     lon_minstr = ("%.04f" % lon_min).replace(".", "").zfill(6)
-    lon_hex = "%04d%s%s" % (lon_deg, lon_minstr, lon_dir)
+    lon_hex = "%04d%s%02x" % (lon_deg, lon_minstr, ord(lon_dir))
     if len(lon_hex) != 12:
         raise protocol.ProtocolError("Invalid waypoint longitude format")
 
-    wp_data = b'\xff'*4 + unhexlify(lat_hex) + lat_dir.encode("ascii")
-    wp_data += unhexlify(lon_hex) + lon_dir.encode("ascii")
+    wp_data = b'\xff'*5
+    if "mmsi" in wp and wp["mmsi"] is not None:
+        wp_data = unhexlify(wp["mmsi"] + "0")
+    wp_data += unhexlify(lat_hex) + unhexlify(lon_hex)
     wp_data += wp["name"].encode("ascii")[:15].ljust(15, b'\xff')
     wp_data += unhexlify("%02x" % wp["id"])  # TODO: There must be an elegant way
     if len(wp_data) != 32:
