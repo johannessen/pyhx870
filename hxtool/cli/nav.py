@@ -114,37 +114,51 @@ def nav_data_oversized(nav_data: dict, hx: object) -> bool:
 def read_gpx(file_name: str) -> dict:
     gpx = gpxpy.parse(open(file_name, 'r'))
     nav_data = {"waypoints": [], "routes": []}
-    index = 0
-    # Known issue: Route/waypoint relationships read from device are not
-    # stored in GPX, resulting in a profliferation of duplicate waypoints
-    # when routes that had been dumped from the device are flashed back.
-    # See GH #30 for a brief discussion of possible solutions.
 
     for p in gpx.waypoints:
-        index += 1
         point = {
             "latitude": p.latitude,
             "longitude": p.longitude,
             "name": filter_name(p.name),
-            "id": index,
+            "comment": p.comment,
         }
-        nav_data["waypoints"].append(point)
+        waypoints_append(nav_data["waypoints"], point)
 
     for r in gpx.routes:
         route = {"name": filter_name(r.name), "points": []}
         for p in r.points:
-            index += 1
             point = {
                 "latitude": p.latitude,
                 "longitude": p.longitude,
                 "name": filter_name(p.name),
-                "id": index,
+                "comment": p.comment,
             }
-            route["points"].append(point)
-            nav_data["waypoints"].append(point)
+            id = waypoints_append(nav_data["waypoints"], point)
+            route["points"].append({"id": id})
         nav_data["routes"].append(route)
 
     return nav_data
+
+
+def waypoints_append(waypoints: list, point: dict) -> int:
+    if point["comment"]:
+        mmsi = re.search(r"\breceived from MMSI (\d{9,10})\b", point["comment"])
+        if mmsi:
+            point["mmsi"] = mmsi.group(1)
+
+    # Route/waypoint relationships read from device are not stored in GPX.
+    # To avoid a proliferation of duplicate waypoints when routes that had
+    # been dumped from the device are flashed back, duplicates are filtered.
+    for existing in waypoints:
+        if existing["name"] == point["name"] \
+                and existing["latitude"] == point["latitude"] \
+                and existing["longitude"] == point["longitude"] \
+                and existing["comment"] == point["comment"]:
+            return existing["id"]
+
+    point["id"] = len(waypoints) + 1
+    waypoints.append(point)
+    return point["id"]
 
 
 def filter_name(name: str) -> str:
