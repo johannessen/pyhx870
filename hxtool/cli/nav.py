@@ -2,6 +2,7 @@
 
 import gpxpy
 import gpxpy.gpx
+import re
 from datetime import datetime
 from logging import getLogger
 from os.path import abspath
@@ -124,19 +125,19 @@ def read_gpx(file_name: str) -> dict:
         point = {
             "latitude": p.latitude,
             "longitude": p.longitude,
-            "name": p.name,
+            "name": filter_name(p.name),
             "id": index,
         }
         nav_data["waypoints"].append(point)
 
     for r in gpx.routes:
-        route = {"name": r.name, "points": []}
+        route = {"name": filter_name(r.name), "points": []}
         for p in r.points:
             index += 1
             point = {
                 "latitude": p.latitude,
                 "longitude": p.longitude,
-                "name": p.name,
+                "name": filter_name(p.name),
                 "id": index,
             }
             route["points"].append(point)
@@ -144,6 +145,11 @@ def read_gpx(file_name: str) -> dict:
         nav_data["routes"].append(route)
 
     return nav_data
+
+
+def filter_name(name: str) -> str:
+    # filter all characters known to be unsupported on HX870
+    return re.sub(r"[^ &'*,-.:/[\]0-9A-Za-z]+", " ", name)
 
 
 def write_gpx(nav_data: dict, file_name: str, gpx_name: str) -> int:
