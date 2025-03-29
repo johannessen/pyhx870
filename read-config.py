@@ -27,7 +27,7 @@ def config_read():
     except Exception as exc:
         print( "Could not open connection to HX870." )
         sys.exit(1)
-    print( "Device MMSI " + (mmsi if mmsi != "ffffffffff" else "not set") )
+    print( "Device MMSI " + (mmsi if mmsi != "FFFFFFFFFF" else "not set") )
     sys.stdout.write( "Reading HX870 memory " )
     sys.stdout.flush()
     try:
