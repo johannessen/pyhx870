@@ -32,7 +32,7 @@ def config_write(config):
     sys.stdout.flush()
     try:
         coloredlogs.set_level(logging.WARNING)
-        config = h.config.config_write(config, progress=progress_bar)
+        config = h.config.config_write(config, check_region=False, progress=progress_bar)
     except Exception as exc:
         print( " Error!" )
         raise exc
