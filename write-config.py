@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import time, sys, os
+import argparse, os, struct, sys
 import coloredlogs, logging
 
 import hxtool
@@ -11,24 +11,38 @@ def progress_bar(progress):
     sys.stdout.write(".")
     sys.stdout.flush()
 
-class HxToolArgs(object):
-    def __init__(self):
-        self.model = None
-        self.tty = None
-        self.simulator = None
 
-def config_write(config):
-    h = hxtool.get(HxToolArgs())
-    try:
-        if not h.comm.cp_mode:
-            raise Exception("not in CP mode (region mismatch?)")
-        h.comm.sync()
-        fw = h.comm.get_firmware_version()
-    except Exception as exc:
-        print( "Could not open connection to HX870." )
+def config_write(args, config):
+    # Help with device selection: Try to auto-detect the device model for
+    # the config data read from disk
+    magic = struct.unpack('>h', config[0:2])[0]
+    if not args.model:
+        for model in hxtool.device.models.keys():
+            if magic == hxtool.device.models[model].config_model.CONFIG_MAGIC:
+                args.model = model
+
+    devices = hxtool.device.enumerate(
+        force_model   = args.model,
+        force_device  = args.tty,
+    )
+    if len(devices) != 1:
+        # Include the model determined from the config data in the error message
+        device_name = f"{args.model} " if args.model else ""
+        wrong_device_count = f"Multiple {device_name}devices" if devices else f"No {device_name}device"
+        print( f"{wrong_device_count} detected. Try --model or --tty." )
         sys.exit(1)
-    print( "Firmware " + fw + " installed on device" )
-    sys.stdout.write( "Writing to HX870 memory " )
+    h = devices[0]
+    if not h.comm.cp_mode or not h.comm.hx_hardware:
+        print( "Could not open connection." )
+        sys.exit(1)
+
+    # Show device identification, to help users with selecting the right one
+    mmsi = h.config.read_mmsi()[0]
+    if mmsi == "FFFFFFFFF":
+        mmsi = "not set"
+    print( f"Device MMSI before writing was {mmsi}" )
+
+    sys.stdout.write( f"Writing to {h.handle} memory " )
     sys.stdout.flush()
     try:
         coloredlogs.set_level(logging.WARNING)
@@ -40,14 +54,15 @@ def config_write(config):
 
 
 def main():
-    if not len(sys.argv) == 2:
-        sys.stderr.write("Usage:\n    %s <file_name>\n" % os.path.basename(sys.argv[0]))
-        sys.exit(1)
-    filename = sys.argv[1]
-    with open(filename, "rb") as f:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-m", "--model")
+    parser.add_argument("-t", "--tty")
+    parser.add_argument("filename")
+    args = parser.parse_args()
+    with open(args.filename, "rb") as f:
         config = f.read()
     try:
-        config_write(config)
+        config_write(args, config)
     except KeyboardInterrupt:
         print( "\nAborted. Warning: The device may be in an inconsistent state." )
         sys.exit(1)
