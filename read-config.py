@@ -28,7 +28,15 @@ def config_read(args):
 
     # Show device identification, to help users with selecting the right one
     mmsi = h.config.read_mmsi()[0]
-    print( "Device MMSI " + (mmsi if mmsi != "FFFFFFFFFF" else "not set") )
+    atis = h.config.read_atis()[0]
+    callsign = hxtool.callsign.determine(atis)
+    if not mmsi or mmsi == "FFFFFFFFF":
+        mmsi = "not set"
+    if callsign:
+        callsign = ", call sign " + callsign
+    elif atis and atis != "FFFFFFFFFF" and mmsi == "not set":
+        callsign = ", ATIS " + atis
+    print( "Device MMSI " + mmsi + callsign )
 
     sys.stdout.write( f"Reading {h.handle} memory " )
     sys.stdout.flush()

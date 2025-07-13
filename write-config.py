@@ -38,9 +38,15 @@ def config_write(args, config):
 
     # Show device identification, to help users with selecting the right one
     mmsi = h.config.read_mmsi()[0]
-    if mmsi == "FFFFFFFFF":
+    atis = h.config.read_atis()[0]
+    callsign = hxtool.callsign.determine(atis)
+    if not mmsi or mmsi == "FFFFFFFFF":
         mmsi = "not set"
-    print( f"Device MMSI before writing was {mmsi}" )
+    if callsign:
+        callsign = ", call sign " + callsign
+    elif atis and atis != "FFFFFFFFFF" and mmsi == "not set":
+        callsign = ", ATIS " + atis
+    print( f"Device MMSI before writing was {mmsi}{callsign}" )
 
     sys.stdout.write( f"Writing to {h.handle} memory " )
     sys.stdout.flush()
