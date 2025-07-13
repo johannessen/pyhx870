@@ -1,3 +1,75 @@
+# Fork of hxtool
+
+This fork maintained by [**@johannessen**](https://arne.johannessen.de/)
+has the following differences from the original upstream
+[`hxtool` created by **@cr**](https://github.com/cr/hx870) as of this writing:
+
+  - Add working support for other models than the HX870
+    ([#41](https://github.com/cr/hx870/pull/41),
+    [#46](https://github.com/cr/hx870/pull/46))
+
+      - Fix HX890 support
+        ([#39](https://github.com/cr/hx870/issues/39)) – **@cr**
+      - Add HX891 support
+        ([`8616f40`]( https://github.com/cr/hx870/commit/8616f40d553213388c44b067d5a7db8b0bcf1fdd)) – **@cr**
+      - Add GX1400 support
+        ([#40](https://github.com/cr/hx870/issues/40),
+        [#42](https://github.com/cr/hx870/pull/42))
+
+  - Add `peek` and `poke` commands for raw memory access
+    ([#43](https://github.com/cr/hx870/pull/43),
+    [`patch/poke-command`]( https://github.com/johannessen/pyhx870/tree/patch/poke-command))
+
+  - Add `nav` command for GPX navigation data (waypoints and routes)
+    ([#1](https://github.com/cr/hx870/issues/1),
+    [#33](https://github.com/cr/hx870/pull/33),
+    [`patch/nav-command`]( https://github.com/johannessen/pyhx870/tree/patch/nav-command))
+
+      - HX870 only (adding support for other models wouldn't be too difficult,
+        but I have little interest to work on that now; you should consider
+        using [SHsync](https://mbof.github.io/hx/) instead)
+      - Writing *routes* from GPX to the device has only been tested sporadically
+
+  - Add executable scripts that can be run directly from the working directory,
+    avoiding the need to set up a virtual environment and/or install `hxtool`
+    (note that this approach may require system-wide dependency installation,
+    which is generally not recommended)
+
+      - `./hxtool.py` simply runs `hxtool`, passing through any arguments
+        ([`patch/hxtool-script`]( https://github.com/johannessen/pyhx870/tree/patch/hxtool-script))
+
+      - `./read-config.py` and `./write-config.py` are alternatives to the
+        `config` command with some extra features that may be especially
+        useful when you work with several devices connected at the same time
+        ([#4](https://github.com/cr/hx870/issues/4),
+        [`patch/read-write-script`]( https://github.com/johannessen/pyhx870/tree/patch/read-write-script))
+
+          - Use the wording read/write instead of dump/flash, which I find
+            easier to type and remember (YMMV)
+          - Show a simple progress bar
+          - Show MMSI and callsign of the device being operated on
+          - Refuse to work whenever the device selection would be ambiguous
+          - Automagically use the magic in the data file for device selection
+
+  - Fix region mismatch check on `hxtool config --flash`
+    ([`1643f9e`]( https://github.com/cr/hx870/commit/1643f9ee28e8bfee848776ac43fbd6f7d85eeb87))
+
+  - Various internal improvements (dependencies, testing, code style etc.) – **@cr**
+
+Obviously, the original upstream repository [cr/hx870](https://github.com/cr/hx870)
+is maintained independently of this fork, so the actual set of differences
+may be larger or smaller than described above by the time you view this.
+
+Contributions are probably best made to the upstream repository, so that
+everybody benefits from them. Anything merged upstream may be expected to
+eventually trickle down to this fork. Should you still wish to contribute
+something to this fork directly, I suggest you start by describing your
+proposal in a [new issue](https://github.com/johannessen/pyhx870/issues/new).
+
+- - - - -
+
+The remainder of this document is the original hxtool readme.
+
 # hxtool
 
 Here's my collection of experimental Python code and reverse engineering notes
