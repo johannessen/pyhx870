@@ -7,7 +7,10 @@ from . import devices
 from . import gpslog
 from . import id
 from . import info
+from . import nav
 from . import nmea
+from . import peek
+from . import poke
 
 __all__ = [
     "run",
@@ -17,5 +20,7 @@ __all__ = [
     "gpslog",
     "id",
     "info",
-    "nmea"
+    "nmea",
+    "peek",
+    "poke",
 ]

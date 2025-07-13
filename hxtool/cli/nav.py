@@ -1,0 +1,209 @@
+# -*- coding: utf-8 -*-
+
+import gpxpy
+import gpxpy.gpx
+import re
+from datetime import datetime
+from logging import getLogger
+from os.path import abspath
+from importlib import metadata
+
+import hxtool
+from .base import CliCommand
+
+logger = getLogger(__name__)
+
+
+class NavCommand(CliCommand):
+
+    name = "nav"
+    help = "dump or flash navigation data (waypoints and routes) (HX870 only)"
+
+    @staticmethod
+    def setup_args(parser) -> None:
+        parser.add_argument("-g", "--gpx",
+                            help="name of GPX file",
+                            type=abspath,
+                            action="store")
+        parser.add_argument("-d", "--dump",
+                            help="read nav data from HX870 and write to file",
+                            action="store_true")
+        parser.add_argument("-f", "--flash",
+                            help="read nav data from file and write to HX870",
+                            action="store_true")
+        parser.add_argument("-e", "--erase",
+                            help="erase existing nav data from HX870",
+                            action="store_true")
+
+    def run(self):
+
+        hx = hxtool.get(self.args)
+        if hx is None:
+            return 10
+
+        if not hx.comm.cp_mode:
+            logger.critical("For navigation data functions, device must be in CP mode (MENU + ON)")
+            return 10
+
+        result = 0
+
+        if self.args.dump:
+            result = max(self.dump(hx), result)
+
+        if self.args.flash or self.args.erase:
+            result = max(self.flash_erase(hx), result)
+
+        return result
+
+    def dump(self, hx):
+        if self.args.gpx:
+            logger.info("Reading nav data from handset")
+            raw_nav_data = hx.config.read_nav_data(True)
+            logger.info("Writing GPX nav data to `{}`".format(self.args.gpx))
+            gpx_name = "Nav data read from {} with MMSI {}".format(
+                       hx.__class__.__name__, hx.config.read_mmsi()[0])
+            return write_gpx(raw_nav_data, self.args.gpx, gpx_name)
+        return 0
+
+    def flash_erase(self, hx):
+        nav_data = {"waypoints": [], "routes": []}
+
+        if self.args.flash:
+            if self.args.gpx:
+                logger.info("Reading GPX nav data from `{}`".format(self.args.gpx))
+                nav_data = read_gpx(self.args.gpx)
+
+            logger.info(log_nav_data("Read {w} waypoint{ws} and {r} route{rs} from file", nav_data))
+            if self.args.erase:
+                logger.info("Will replace nav data on device")
+            else:
+                logger.info("Will append to nav data on device")
+
+                logger.info("Reading nav data from handset")
+                raise NotImplementedError
+
+        logger.info(log_nav_data("In total {w} waypoint{ws} and {r} route{rs}", nav_data))
+        if nav_data_oversized(nav_data, hx):
+            return 10
+
+        logger.info("Writing nav data to handset")
+        hx.config.write_nav_data(nav_data, True)
+
+        return 0
+
+
+def log_nav_data(text: str, nav_data: dict) -> str:
+    waypoint_count = len(nav_data["waypoints"])
+    route_count = len(nav_data["routes"])
+    return text.format(
+            w=waypoint_count, ws=("s" if waypoint_count != 1 else ""),
+            r=route_count, rs=("s" if route_count != 1 else ""))
+
+
+def nav_data_oversized(nav_data: dict, hx: object) -> bool:
+    oversized = False
+    if len(nav_data["waypoints"]) > hx.config.WAYPOINT_COUNT:
+        logger.critical("Too many waypoints to fit on device (maximum: {})".format(hx.config.WAYPOINT_COUNT))
+        oversized = True
+    if len(nav_data["routes"]) > hx.config.ROUTE_COUNT:
+        logger.critical("Too many routes to fit on device (maximum: {})".format(hx.config.ROUTE_COUNT))
+        oversized = True
+    return oversized
+
+
+def read_gpx(file_name: str) -> dict:
+    gpx = gpxpy.parse(open(file_name, 'r'))
+    nav_data = {"waypoints": [], "routes": []}
+
+    for p in gpx.waypoints:
+        point = {
+            "latitude": p.latitude,
+            "longitude": p.longitude,
+            "name": filter_name(p.name),
+            "comment": p.comment,
+        }
+        waypoints_append(nav_data["waypoints"], point)
+
+    for r in gpx.routes:
+        route = {"name": filter_name(r.name), "points": []}
+        for p in r.points:
+            point = {
+                "latitude": p.latitude,
+                "longitude": p.longitude,
+                "name": filter_name(p.name),
+                "comment": p.comment,
+            }
+            id = waypoints_append(nav_data["waypoints"], point)
+            route["points"].append({"id": id})
+        nav_data["routes"].append(route)
+
+    return nav_data
+
+
+def waypoints_append(waypoints: list, point: dict) -> int:
+    if point["comment"]:
+        mmsi = re.search(r"\breceived from MMSI (\d{9,10})\b", point["comment"])
+        if mmsi:
+            point["mmsi"] = mmsi.group(1)
+
+    # Route/waypoint relationships read from device are not stored in GPX.
+    # To avoid a proliferation of duplicate waypoints when routes that had
+    # been dumped from the device are flashed back, duplicates are filtered.
+    for existing in waypoints:
+        if existing["name"] == point["name"] \
+                and existing["latitude"] == point["latitude"] \
+                and existing["longitude"] == point["longitude"] \
+                and existing["comment"] == point["comment"]:
+            return existing["id"]
+
+    point["id"] = len(waypoints) + 1
+    waypoints.append(point)
+    return point["id"]
+
+
+def filter_name(name: str) -> str:
+    # filter all characters known to be unsupported on HX870
+    return re.sub(r"[^ &'*,-.:/[\]0-9A-Za-z]+", " ", name)
+
+
+def write_gpx(nav_data: dict, file_name: str, gpx_name: str) -> int:
+    if len(nav_data["waypoints"]) == 0:
+        logger.warning("No waypoints in device. Not writing empty GPX file")
+        return 0
+
+    gpx = gpxpy.gpx.GPX()
+    gpx.name = gpx_name
+    gpx.creator = "hxtool {} (forked) - github.com/johannessen/pyhx870".format(metadata.version("hxtool"))
+    gpx.time = datetime.now()
+
+    for point in nav_data["waypoints"]:
+        comment = "id {}".format(point["id"])
+        if point["mmsi"] is not None:
+            comment += "; position received from MMSI {}".format(point["mmsi"])
+        p = gpxpy.gpx.GPXWaypoint(
+            latitude=point["latitude_decimal"],
+            longitude=point["longitude_decimal"],
+            name=point["name"],
+            comment=comment,
+        )
+        gpx.waypoints.append(p)
+
+    for route in nav_data["routes"]:
+        r = gpxpy.gpx.GPXRoute(name=route["name"])
+        for point in route["points"]:
+            comment = "id {}".format(point["id"])
+            if point["mmsi"] is not None:
+                comment += "; position received from MMSI {}".format(point["mmsi"])
+            p = gpxpy.gpx.GPXRoutePoint(
+                latitude=point["latitude_decimal"],
+                longitude=point["longitude_decimal"],
+                name=point["name"],
+                comment=comment,
+            )
+            r.points.append(p)
+        gpx.routes.append(r)
+
+    with open(file_name, "w") as f:
+        f.write(gpx.to_xml(version="1.1"))
+
+    return 0

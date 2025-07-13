@@ -2,6 +2,7 @@
 
 import logging
 
+from . import callsign
 from . import cli
 from . import config
 from . import config_file

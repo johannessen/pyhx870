@@ -7,6 +7,7 @@ from functools import reduce
 from logging import getLogger
 from re import match
 from struct import unpack
+from math import copysign
 
 from . import protocol
 
@@ -32,6 +33,9 @@ def unpack_waypoint(data):
     lon_min = int(lon_str[4:10]) / 10000.0
     lon_dir = chr(data[15])
 
+    wp_lat_decimal = {"S": -1.0, "N": 1.0}[lat_dir] * (lat_deg + lat_min / 60.0)
+    wp_lon_decimal = {"W": -1.0, "E": 1.0}[lon_dir] * (lon_deg + lon_min / 60.0)
+
     wp_latitude = "%d%s%07.4f" % (lat_deg, lat_dir, lat_min)
     wp_longitude = "%d%s%07.4f" % (lon_deg, lon_dir, lon_min)
 
@@ -39,42 +43,90 @@ def unpack_waypoint(data):
         "id": wp_id,
         "name": wp_name,
         "mmsi": wp_mmsi,
+        "latitude_decimal": wp_lat_decimal,
+        "longitude_decimal": wp_lon_decimal,
         "latitude": wp_latitude,
         "longitude": wp_longitude
     }
 
 
 def pack_waypoint(wp):
-    m = match(r"""(\d+)([NS])(\d+\.\d+)""", wp["latitude"].upper())
-    if m is None:
-        raise protocol.ProtocolError("Invalid waypoint latitude format")
-    lat_deg = int(m[1])
-    lat_dir = m[2]
-    lat_min = float(m[3])
-    lat_minstr = ("%.04f" % lat_min).replace(".", "").zfill(6)
-    lat_hex = "F%03d%s%s" % (lat_deg, lat_minstr, lat_dir)
-    if len(lat_hex) != 12:
+    if isinstance(wp["latitude"], float):
+        lat_deg = int(abs(wp["latitude"]))
+        lat_min = (abs(wp["latitude"]) - lat_deg) * 60.0
+        lat_dir = "N" if copysign(1.0, wp["latitude"]) > 0.0 else "S"
+    elif isinstance(wp["latitude"], str):
+        m = match(r"""(\d+)([NS])(\d+\.\d+)""", wp["latitude"].upper())
+        if m is None:
+            raise protocol.ProtocolError("Invalid waypoint latitude format")
+        lat_deg = int(m[1])
+        lat_dir = m[2]
+        lat_min = float(m[3])
+    else:
         raise protocol.ProtocolError("Invalid waypoint latitude format")
 
-    m = match(r"""(\d+)([EW])(\d+\.\d+)""", wp["longitude"].upper())
-    if m is None:
+    lat_minstr = ("%.04f" % lat_min).replace(".", "").zfill(6)
+    lat_hex = "%02d%s%02x" % (lat_deg, lat_minstr, ord(lat_dir))
+    if len(lat_hex) != 10:
+        raise protocol.ProtocolError("Invalid waypoint latitude format")
+
+    if isinstance(wp["longitude"], float):
+        lon_deg = int(abs(wp["longitude"]))
+        lon_min = (abs(wp["longitude"]) - lon_deg) * 60.0
+        lon_dir = "E" if copysign(1.0, wp["longitude"]) > 0.0 else "W"
+    elif isinstance(wp["longitude"], str):
+        m = match(r"""(\d+)([EW])(\d+\.\d+)""", wp["longitude"].upper())
+        if m is None:
+            raise protocol.ProtocolError("Invalid waypoint longitude format")
+        lon_deg = int(m[1])
+        lon_dir = m[2]
+        lon_min = float(m[3])
+    else:
         raise protocol.ProtocolError("Invalid waypoint longitude format")
-    lon_deg = int(m[1])
-    lon_dir = m[2]
-    lon_min = float(m[3])
+
     lon_minstr = ("%.04f" % lon_min).replace(".", "").zfill(6)
-    lon_hex = "%04d%s%s" % (lon_deg, lon_minstr, lon_dir)
+    lon_hex = "%04d%s%02x" % (lon_deg, lon_minstr, ord(lon_dir))
     if len(lon_hex) != 12:
         raise protocol.ProtocolError("Invalid waypoint longitude format")
 
-    wp_data = b'\xff'*4 + unhexlify(lat_hex) + lat_dir.encode("ascii")
-    wp_data += unhexlify(lon_hex) + lon_dir.encode("ascii")
+    wp_data = b'\xff'*5
+    if "mmsi" in wp and wp["mmsi"] is not None:
+        wp_data = unhexlify(wp["mmsi"] + "0")
+    wp_data += unhexlify(lat_hex) + unhexlify(lon_hex)
     wp_data += wp["name"].encode("ascii")[:15].ljust(15, b'\xff')
     wp_data += unhexlify("%02x" % wp["id"])  # TODO: There must be an elegant way
     if len(wp_data) != 32:
         raise protocol.ProtocolError("Waypoint encoding error")
 
     return wp_data
+
+
+def unpack_route(data):
+    if data[0x10] == 255:
+        return None
+    name = data[0:0x10].rstrip(b'\xff').decode("ascii")
+    waypoint_ids = []
+    for i in range(0x10, 0x20):
+        if data[i] != 255:
+            waypoint_ids.append(data[i])
+    return {
+        "name": name,
+        "points": waypoint_ids,
+    }
+
+
+def pack_route(route):
+    data = route["name"].encode("ascii")[:15].ljust(16, b'\xff')
+    for point in route["points"]:
+        id = point
+        if isinstance(id, dict):
+            id = point["id"]
+        data += unhexlify("%02x" % id)
+    while len(data) < 0x20:
+        data += b'\xff'
+    if len(data) != 0x20:
+        raise protocol.ProtocolError("Route encoding error")
+    return data
 
 
 region_code_map = {
