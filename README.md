@@ -66,6 +66,16 @@ eventually trickle down to this fork. Should you still wish to contribute
 something to this fork directly, I suggest you start by describing your
 proposal in a [new issue](https://github.com/johannessen/pyhx870/issues/new).
 
+**See also:**
+
+  - A different open-source tool to access the memory of connected radios: 
+      [SHsync](https://mbof.github.io/hx/)
+
+  - Memory layout information for specific radio models: 
+      [HX870](https://johannessen.github.io/hx870/)
+    · [HX890](https://pc5e.nl/hx890e)
+    · [GX1400](https://arne.johannessen.de/temp/gx1400.txt)
+
 - - - - -
 
 The remainder of this document is the original hxtool readme.
